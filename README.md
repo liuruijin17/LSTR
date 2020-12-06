@@ -16,7 +16,7 @@ TuSimple accuracy.
 
 For details see [End-to-end Lane Shape Prediction with Transformers](https://arxiv.org/pdf/2011.04233.pdf) by Ruijin Liu, Zejian Yuan, Tie Liu, Zhiliang Xiong.
 
-### :star: [Support for CULane] (Please refer to the [culane branch](https://github.com/liuruijin17/LSTR/tree/culane)) - 2020-12-06 
+:star: ***[Support for CULane] (Please refer to the [culane branch](https://github.com/liuruijin17/LSTR/tree/culane)) - 2020-12-06***
 
 ## Model Zoo
 We provide the baseline LSTR model file (trained on TuSimple train and val sets after 500000 iterations) in

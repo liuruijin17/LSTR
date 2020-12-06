@@ -1,0 +1,61 @@
+{
+    "system": {
+        "dataset": "CULANE",
+        "batch_size": 16,
+        "sampling_function": "kp_detection",
+
+        "train_split": "train+val",
+        "val_split": "test",
+        "test_split": "test",
+
+        "use_crop": false,
+
+        "learning_rate": 0.0001,
+        "decay_rate": 10,
+
+        "val_iter": 100,
+        "display": 100,
+
+        "opt_algo": "adam",
+        "prefetch_size": 5,
+
+        "max_iter": 500000,
+        "stepsize": 450000,
+        "snapshot": 5000,
+
+        "chunk_sizes": [16],
+
+        "cache_dir": "./cache",
+        "result_dir": "./results",
+        "data_dir": "../../",
+
+        "res_layers": [1, 2, 2, 2],
+
+
+        "res_dims": [16, 32, 64, 128],
+        "res_strides": [1, 2, 2, 2],
+        "attn_dim": 32,
+        "dim_feedforward": 128,
+
+        "res_dims_bak": [32, 64, 128, 256],
+        "attn_dim_bak": 64,
+        "dim_feedforward_bak": 256,
+
+
+        "kps_dim": 8,
+
+        "num_heads": 2,
+        "enc_layers": 2,
+        "dec_layers": 2,
+        "block": "BasicBlock",
+        "block_bak": "BasicBlock/BottleNeck",
+        "num_queries": 7
+    },
+
+    "db": {
+        "rand_color": true,
+        "input_size": [295, 820],
+        "test_scales": [1],
+        "categories": 1
+    }
+}

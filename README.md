@@ -35,7 +35,7 @@ about how to improve the performance on CULane dataset.
 ## Model Zoo
 
 We provide the baseline LSTR_CULANE model file (trained on CULane train and val sets after 500000 iterations) in
-the ./cache/nnet/LSTR_CULANE/LSTR_CULANE500000.pkl (~3.1MB).
+the ./cache/nnet/LSTR_CULANE/LSTR_CULANE_500000.pkl (~3.1MB).
 
 ## Data Preparation
 

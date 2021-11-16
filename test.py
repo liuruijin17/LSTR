@@ -4,12 +4,9 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import json
 import torch
-import pprint
 import argparse
 import importlib
-import sys
-import numpy as np
-
+from loguru import logger
 import matplotlib
 matplotlib.use("Agg")
 
@@ -23,19 +20,19 @@ torch.backends.cudnn.benchmark = False
 def parse_args():
     parser = argparse.ArgumentParser(description="Test CornerNet")
     parser.add_argument("cfg_file", help="config file", type=str)
-    parser.add_argument("--testiter", dest="testiter",
+    parser.add_argument("-c", "--testiter", dest="testiter",
                         help="test at iteration i",
                         default=None, type=int)
-    parser.add_argument("--split", dest="split",
+    parser.add_argument("-s", "--split", dest="split",
                         help="which split to use",
-                        default="validation", type=str)
+                        default="testing", type=str)
     parser.add_argument("--suffix", dest="suffix", default=None, type=str)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--modality", dest="modality",
+    parser.add_argument("-m", "--modality", dest="modality",
                         default=None, type=str)
     parser.add_argument("--image_root", dest="image_root",
                         default=None, type=str)
-    parser.add_argument("--batch", dest='batch',
+    parser.add_argument("-b", "--batch", dest='batch',
                         help="select a value to maximum your FPS",
                         default=1, type=int)
     parser.add_argument("--debugEnc", action="store_true")
@@ -59,12 +56,12 @@ def test(db, split, testiter,
 
     make_dirs([result_dir])
     test_iter = system_configs.max_iter if testiter is None else testiter
-    print("loading parameters at iteration: {}".format(test_iter))
+    logger.info("loading parameters at iteration: {}".format(test_iter))
 
-    print("building neural network...")
+    logger.info("building neural network...")
     nnet = NetworkFactory()
 
-    print("loading parameters...")
+    logger.info("loading parameters...")
     nnet.load_params(test_iter)
     nnet.cuda()
     nnet.eval_mode()
@@ -72,16 +69,16 @@ def test(db, split, testiter,
     evaluator = Evaluator(db, result_dir)
 
     if modality == 'eval':
-        print('static evaluating...')
+        logger.info('static evaluating...')
         test_file = "test.tusimple"
         testing = importlib.import_module(test_file).testing
-        testing(db, nnet, result_dir, debug=debug, evaluator=evaluator, repeat=batch,
+        testing(db, nnet, result_dir, debug=debug, evaluator=evaluator, batch_size=batch,
                 debugEnc=debugEnc, debugDec=debugDec)
 
     elif modality == 'images':
         if image_root == None:
             raise ValueError('--image_root is not defined!')
-        print("processing [images]...")
+        logger.info("processing [images]...")
         test_file = "test.images"
         image_testing = importlib.import_module(test_file).testing
         image_testing(db, nnet, image_root, debug=debug, evaluator=None)
@@ -97,7 +94,7 @@ if __name__ == "__main__":
         cfg_file = os.path.join(system_configs.config_dir, args.cfg_file + ".json")
     else:
         cfg_file = os.path.join(system_configs.config_dir, args.cfg_file + "-{}.json".format(args.suffix))
-    print("cfg_file: {}".format(cfg_file))
+    logger.info("cfg_file: {}".format(cfg_file))
 
     with open(cfg_file, "r") as f:
         configs = json.load(f)
@@ -115,17 +112,12 @@ if __name__ == "__main__":
         "testing": test_split
     }[args.split]
 
-    print("loading all datasets...")
+    logger.info("loading all datasets...")
     dataset = system_configs.dataset
-    print("split: {}".format(split))  # test
+    logger.info("split: {}".format(split))  # test
 
     testing_db = datasets[dataset](configs["db"], split)
 
-    # print("system config...")
-    # pprint.pprint(system_configs.full)
-    #
-    # print("db config...")
-    # pprint.pprint(testing_db.configs)
 
     test(testing_db,
          args.split,

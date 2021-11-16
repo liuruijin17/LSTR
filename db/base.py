@@ -1,5 +1,6 @@
 import os
 import h5py
+from loguru import logger
 import numpy as np
 
 from config import system_configs
@@ -90,6 +91,6 @@ class BASE(object):
             self._data_rng = np.random.RandomState(os.getpid())
 
         if not quiet:
-            print("shuffling indices...")
+            logger.info("shuffling indices...")
         rand_perm = self._data_rng.permutation(len(self._db_inds))
         self._db_inds = self._db_inds[rand_perm]

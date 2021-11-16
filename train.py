@@ -1,25 +1,27 @@
 #!/usr/bin/env python
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 import json
 import torch
-import numpy as np
 import queue
-import pprint
-import random
 import argparse
 import importlib
 import threading
 import traceback
 
-from tqdm import tqdm
-from utils import stdout_to_tqdm
+import numpy as np
+from loguru import logger
+
 from config import system_configs
 from nnet.py_factory import NetworkFactory
 from torch.multiprocessing import Process, Queue, Pool
 from db.datasets import datasets
 import models.py_utils.misc as utils
+from models.py_utils.dist import get_num_devices, synchronize
+from db.utils.evaluator import Evaluator
+from models.py_utils.dist import get_rank
+from utils.logger import setup_logger
 
 torch.backends.cudnn.enabled   = True
 torch.backends.cudnn.benchmark = True
@@ -27,11 +29,11 @@ torch.backends.cudnn.benchmark = True
 def parse_args():
     parser = argparse.ArgumentParser(description="Train CornerNet")
     parser.add_argument("cfg_file", help="config file", type=str)
-    parser.add_argument("--iter", dest="start_iter",
+    parser.add_argument("-c", "--iter", dest="start_iter",
                         help="train at iteration i",
                         default=0, type=int)
-    parser.add_argument("--threads", dest="threads", default=4, type=int)
-    parser.add_argument("--freeze", action="store_true")
+    parser.add_argument("-t", "--threads", dest="threads", default=4, type=int)
+    parser.add_argument("-d", "--devices", default=1, type=int, help="device for training")
 
     args = parser.parse_args()
     return args
@@ -43,7 +45,7 @@ def make_dirs(directories):
 
 def prefetch_data(db, queue, sample_data):
     ind = 0
-    print("start prefetching data...")
+    logger.info("start prefetching data...")
     np.random.seed(os.getpid())
     while True:
         try:
@@ -72,7 +74,7 @@ def init_parallel_jobs(dbs, queue, fn):
         task.start()
     return tasks
 
-def train(training_dbs, validation_db, start_iter=0, freeze=False):
+def train(training_dbs, validation_db, start_iter: int = 0):
     learning_rate    = system_configs.learning_rate
     max_iteration    = system_configs.max_iter
     pretrained_model = system_configs.pretrain
@@ -120,74 +122,82 @@ def train(training_dbs, validation_db, start_iter=0, freeze=False):
     validation_pin_thread.daemon = True
     validation_pin_thread.start()
 
-    print("building model...")
+    logger.info("building model...")
     nnet = NetworkFactory(flag=True)
 
     if pretrained_model is not None:
         if not os.path.exists(pretrained_model):
             raise ValueError("pretrained model does not exist")
-        print("loading from pretrained model")
+        logger.info("loading from pretrained model")
         nnet.load_pretrained_params(pretrained_model)
 
     if start_iter:
         learning_rate /= (decay_rate ** (start_iter // stepsize))
-
         nnet.load_params(start_iter)
         nnet.set_lr(learning_rate)
-        print("training starts from iteration {} with learning_rate {}".format(start_iter + 1, learning_rate))
+        logger.info("training starts from iteration {} with learning_rate {}".format(start_iter + 1, learning_rate))
     else:
         nnet.set_lr(learning_rate)
 
-    print("training start...")
+    logger.info("training start...")
     nnet.cuda()
     nnet.train_mode()
-    header = None
+    # header = None
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
-    metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
 
-    with stdout_to_tqdm() as save_stdout:
-        for iteration in metric_logger.log_every(tqdm(range(start_iter + 1, max_iteration + 1),
-                                                      file=save_stdout, ncols=67),
-                                                 print_freq=10, header=header):
+    test_file = "test.{}".format(validation_db._data)
+    testing = importlib.import_module(test_file).testing
 
-            training = pinned_training_queue.get(block=True)
-            viz_split = 'train'
-            save = True if (display and iteration % display == 0) else False
-            (set_loss, loss_dict) \
-                = nnet.train(iteration, save, viz_split, **training)
-            (loss_dict_reduced, loss_dict_reduced_unscaled, loss_dict_reduced_scaled, loss_value) = loss_dict
-            metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
-            metric_logger.update(class_error=loss_dict_reduced['class_error'])
+    # with stdout_to_tqdm() as save_stdout:
+    for iteration in metric_logger.log_every((range(start_iter + 1, max_iteration + 1)), print_freq=10):
+
+        training = pinned_training_queue.get(block=True)
+        viz_split = 'train'
+        save = True if (display and iteration % display == 0) else False
+        (set_loss, loss_dict) \
+            = nnet.train(iteration, save, viz_split, **training)
+        (loss_dict_reduced, loss_dict_reduced_unscaled, loss_dict_reduced_scaled, loss_value) = loss_dict
+        # metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
+        metric_logger.update(loss=torch.mean(loss_value))
+        # metric_logger.update(class_error=loss_dict_reduced['class_error'])
+        metric_logger.update(lr=learning_rate)
+
+        del set_loss
+
+        if val_iter and validation_db.db_inds.size and iteration % val_iter == 0:
+            nnet.eval_mode()
+            viz_split = 'val'
+            save = True
+            validation = pinned_validation_queue.get(block=True)
+            (val_set_loss, val_loss_dict) \
+                = nnet.validate(iteration, save, viz_split, **validation)
+            (loss_dict_reduced, loss_dict_reduced_unscaled, loss_dict_reduced_scaled, loss_value) = val_loss_dict
+            # logger.info('Saving training and evaluating images...')
+            # metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
+            metric_logger.update(loss=torch.mean(loss_value))
+            # metric_logger.update(class_error=loss_dict_reduced['class_error'])
             metric_logger.update(lr=learning_rate)
+            nnet.train_mode()
 
-            del set_loss
+        # if iteration % snapshot == 0:
+        #     nnet.save_params(iteration)
 
-            if val_iter and validation_db.db_inds.size and iteration % val_iter == 0:
-                nnet.eval_mode()
-                viz_split = 'val'
-                save = True
-                validation = pinned_validation_queue.get(block=True)
-                (val_set_loss, val_loss_dict) \
-                    = nnet.validate(iteration, save, viz_split, **validation)
-                (loss_dict_reduced, loss_dict_reduced_unscaled, loss_dict_reduced_scaled, loss_value) = val_loss_dict
-                print('[VAL LOG]\t[Saving training and evaluating images...]')
-                metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
-                metric_logger.update(class_error=loss_dict_reduced['class_error'])
-                metric_logger.update(lr=learning_rate)
-                nnet.train_mode()
+        if iteration % stepsize == 0:
+            learning_rate /= decay_rate
+            nnet.set_lr(learning_rate)
 
-            if iteration % snapshot == 0:
-                nnet.save_params(iteration)
-
-            if iteration % stepsize == 0:
-                learning_rate /= decay_rate
-                nnet.set_lr(learning_rate)
-
-            if iteration % (training_size // batch_size) == 0:
-                metric_logger.synchronize_between_processes()
-                print("Averaged stats:", metric_logger)
-
+        if iteration % (20 * training_size // batch_size) == 0:
+            metric_logger.synchronize_between_processes()
+            logger.info("Averaged stats:", metric_logger)
+            nnet.eval_mode()
+            res_dir = os.path.join(system_configs.result_dir, str(iteration), 'TestDuringTraining')
+            make_dirs([res_dir])
+            evaluator = Evaluator(validation_db, res_dir)
+            _ = testing(validation_db, nnet, res_dir, evaluator=evaluator, batch_size=64)
+            nnet.train_mode()
+            synchronize()
+            nnet.save_params(iteration)
 
     # sending signal to kill the thread
     training_pin_semaphore.release()
@@ -202,21 +212,36 @@ def train(training_dbs, validation_db, start_iter=0, freeze=False):
 if __name__ == "__main__":
     args = parse_args()
 
+    num_gpu = get_num_devices() if args.devices is None else args.devices
+    assert num_gpu <= get_num_devices()
+
     cfg_file = os.path.join(system_configs.config_dir, args.cfg_file + ".json")
     with open(cfg_file, "r") as f:
         configs = json.load(f)
 
-    configs["system"]["snapshot_name"] = args.cfg_file  # CornerNet
+    configs["system"]["snapshot_name"] = args.cfg_file
+    num_imgs_per_gpu = configs["system"]["batch_size"] // num_gpu
+    chunk_sizes = [num_imgs_per_gpu] * (num_gpu - 1)
+    chunk_sizes.append(configs["system"]["batch_size"] - sum(chunk_sizes))
+    configs["system"]["chunk_sizes"] = chunk_sizes
+
     system_configs.update_config(configs["system"])
+
+    setup_logger(
+        system_configs.result_dir,
+        distributed_rank=get_rank(),
+        filename="train_log.txt",
+        mode="a",
+    )
 
     train_split = system_configs.train_split
     val_split   = system_configs.val_split
 
-    dataset = system_configs.dataset  # MSCOCO | FVV
-    print("loading all datasets {}...".format(dataset))
+    dataset = system_configs.dataset
+    logger.info("loading all datasets {}...".format(dataset))
 
     threads = args.threads  # 4 every 4 epoch shuffle the indices
-    print("using {} threads".format(threads))
+    logger.info("using {} threads".format(threads))
     training_dbs  = [datasets[dataset](configs["db"], train_split) for _ in range(threads)]
     validation_db = datasets[dataset](configs["db"], val_split)
 
@@ -226,8 +251,7 @@ if __name__ == "__main__":
     # print("db config...")
     # pprint.pprint(training_dbs[0].configs)
 
-    print("len of training db: {}".format(len(training_dbs[0].db_inds)))
-    print("len of testing db: {}".format(len(validation_db.db_inds)))
-
-    print("freeze the pretrained network: {}".format(args.freeze))
-    train(training_dbs, validation_db, args.start_iter, args.freeze) # 0
+    logger.info("len of training db: {}".format(len(training_dbs[0].db_inds)))
+    logger.info("len of testing db: {}".format(len(validation_db.db_inds)))
+    # logger.info("freeze the pretrained network: {}".format(args.freeze))
+    train(training_dbs, validation_db, args.start_iter) # 0

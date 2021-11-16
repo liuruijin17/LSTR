@@ -3,6 +3,8 @@ import torch
 import importlib
 import torch.nn as nn
 from thop import profile, clever_format
+from copy import deepcopy
+from loguru import logger
 from config import system_configs
 from models.py_utils.data_parallel import DataParallel
 
@@ -39,17 +41,19 @@ class DummyModule(nn.Module):
         return self.module(*xs, **kwargs)
 
 class NetworkFactory(object):
-    def __init__(self, flag=False):
+    def __init__(self, flag: bool = False):
         super(NetworkFactory, self).__init__()
-
         module_file = "models.{}".format(system_configs.snapshot_name)
-        # print("module_file: {}".format(module_file)) # models.CornerNet
         nnet_module = importlib.import_module(module_file)
 
-        self.model   = DummyModule(nnet_module.model(flag=flag))
-        self.loss    = nnet_module.loss()
+        self.model = DummyModule(nnet_module.model(flag=flag))
+        self.loss = nnet_module.loss()
         self.network = Network(self.model, self.loss)
+
+        # logger.info("Images of one batch are split on multi-GPU with: {}".format(system_configs.chunk_sizes))
         self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes)
+
+        # True: Training / False: Testing
         self.flag    = flag
 
         # Count total parameters
@@ -59,15 +63,14 @@ class NetworkFactory(object):
             for x in params.size():
                 num_params *= x
             total_params += num_params
-        print("Total parameters: {}".format(total_params))
 
         # Count MACs when input is 360 x 640 x 3
         input_test = torch.randn(1, 3, 360, 640).cuda()
         input_mask = torch.randn(1, 3, 360, 640).cuda()
-        macs, params, = profile(self.model, inputs=(input_test, input_mask), verbose=False)
+        macs, params, = profile(deepcopy(self.model).cuda(), inputs=(input_test, input_mask), verbose=False)
         macs, _ = clever_format([macs, params], "%.3f")
-        print('MACs: {}'.format(macs))
-
+        info = "#Params: {:.2f}M, GMacs: {}".format(total_params / 1e6, macs)
+        logger.info(info)
 
         if system_configs.opt_algo == "adam":
             self.optimizer = torch.optim.Adam(
@@ -76,7 +79,7 @@ class NetworkFactory(object):
         elif system_configs.opt_algo == "sgd":
             self.optimizer = torch.optim.SGD(
                 filter(lambda p: p.requires_grad, self.model.parameters()),
-                lr=system_configs.learning_rate, 
+                lr=system_configs.learning_rate,
                 momentum=0.9, weight_decay=0.0001
             )
         elif system_configs.opt_algo == 'adamW':
@@ -102,8 +105,7 @@ class NetworkFactory(object):
               save,
               viz_split,
               xs,
-              ys,
-              **kwargs):
+              ys):
         xs = [x.cuda(non_blocking=True) for x in xs]
         ys = [y.cuda(non_blocking=True) for y in ys]
 
@@ -128,8 +130,7 @@ class NetworkFactory(object):
                  save,
                  viz_split,
                  xs,
-                 ys,
-                 **kwargs):
+                 ys):
 
         with torch.no_grad():
             xs = [x.cuda(non_blocking=True) for x in xs]
@@ -151,12 +152,12 @@ class NetworkFactory(object):
             return self.model(*xs, **kwargs)
 
     def set_lr(self, lr):
-        print("setting learning rate to: {}".format(lr))
+        logger.info("setting learning rate to: {}".format(lr))
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
     def load_pretrained_params(self, pretrained_model):
-        print("loading from {}".format(pretrained_model))
+        logger.info("loading from {}".format(pretrained_model))
         with open(pretrained_model, "rb") as f:
             params = torch.load(f)
             self.model.load_state_dict(params)
@@ -178,7 +179,7 @@ class NetworkFactory(object):
 
     def save_params(self, iteration):
         cache_file = system_configs.snapshot_file.format(iteration)
-        print("saving model to {}".format(cache_file))
+        logger.info("saving model to {}".format(cache_file))
         with open(cache_file, "wb") as f:
             params = self.model.state_dict()
             torch.save(params, f)

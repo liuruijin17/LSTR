@@ -255,7 +255,11 @@ class AELoss(nn.Module):
                 outputs,
                 targets):
 
-        gt_cluxy = [tgt[0] for tgt in targets[1:]]
+        # gt_cluxy = [tgt[0] for tgt in targets[1:]]
+        # gt_cluxy = [tgt for tgt in targets]
+        gt_cluxy = [tgt[tgt[:, 0] > 0] for tgt in targets[1]]
+
+
         loss_dict, indices = self.criterion(outputs, gt_cluxy)
         weight_dict = self.criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
@@ -263,8 +267,9 @@ class AELoss(nn.Module):
         loss_dict_reduced = reduce_dict(loss_dict)
         loss_dict_reduced_unscaled = {f'{k}_unscaled': v
                                       for k, v in loss_dict_reduced.items()}
-        loss_dict_reduced_scaled = {k: v * weight_dict[k]
+        loss_dict_reduced_scaled = {f'{k}_scaled': v * weight_dict[k]
                                     for k, v in loss_dict_reduced.items() if k in weight_dict}
+
         losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
 
         loss_value = losses_reduced_scaled.item()
@@ -299,5 +304,7 @@ class AELoss(nn.Module):
                                         pred_labels=pred_labels,
                                         prefix=save_path)
 
+        # return (losses, loss_dict_reduced, loss_dict_reduced_unscaled,
+        #         loss_dict_reduced_scaled, loss_value)
         return (losses, loss_dict_reduced, loss_dict_reduced_unscaled,
-                loss_dict_reduced_scaled, loss_value)
+                loss_dict_reduced_scaled, losses_reduced_scaled)

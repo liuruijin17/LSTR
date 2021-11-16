@@ -20,7 +20,7 @@ def kp_detection(db, k_ind):
     rand_color   = db.configs["rand_color"]
     images   = np.zeros((batch_size, 3, input_size[0], input_size[1]), dtype=np.float32) # b, 3, H, W
     masks    = np.zeros((batch_size, 1, input_size[0], input_size[1]), dtype=np.float32)  # b, 1, H, W
-    gt_lanes = []
+    labels   = np.zeros((batch_size, db.max_lanes, 1 + 2 + 2 * db.max_points), dtype=np.float32)
 
     db_size = db.db_inds.size # 3268 | 2782
 
@@ -48,15 +48,16 @@ def kp_detection(db, k_ind):
             label = db._transform_annotation(new_anno, img_wh=(input_size[1], input_size[0]))['label']
 
         # clip polys
-        tgt_ids   = label[:, 0]
-        label = label[tgt_ids > 0]
+        # tgt_ids   = label[:, 0]
+        # label = label[tgt_ids > 0]
 
         # make lower the same
-        label[:, 1][label[:, 1] < 0] = 1
-        label[:, 1][...] = np.min(label[:, 1])
+        # label[:, 1][label[:, 1] < 0] = 1
+        # label[:, 1][...] = np.min(label[:, 1])
+        labels[b_ind]=label
 
-        label = np.stack([label] * batch_size, axis=0)
-        gt_lanes.append(torch.from_numpy(label.astype(np.float32)))
+        # label = np.stack([label] * batch_size, axis=0)
+        # gt_lanes.append(torch.from_numpy(label.astype(np.float32)))
 
         img = (img / 255.).astype(np.float32)
         if rand_color:
@@ -69,10 +70,11 @@ def kp_detection(db, k_ind):
 
     images   = torch.from_numpy(images)
     masks    = torch.from_numpy(masks)
+    labels   = torch.from_numpy(labels)
 
     return {
                "xs": [images, masks],
-               "ys": [images, *gt_lanes]
+               "ys": [images, labels]
            }, k_ind
 
 

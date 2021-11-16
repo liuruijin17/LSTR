@@ -2,12 +2,11 @@
     "system": {
         "dataset": "TUSIMPLE",
         "batch_size": 16,
-        "chunk_sizes": [16],
 
         "sampling_function": "kp_detection",
 
         "train_split": "train+val",
-        "val_split": "val",
+        "val_split": "test",
         "test_split": "test",
 
         "learning_rate": 0.0001,
@@ -19,7 +18,7 @@
         "opt_algo": "adam",
         "prefetch_size": 5,
 
-        "max_iter": 500000,
+        "max_iter": 507640,
         "stepsize": 450000,
         "snapshot": 5000,
 

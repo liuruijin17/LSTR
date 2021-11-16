@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pickle
 import cv2
+from loguru import logger
 from tabulate import tabulate
 from torchvision.transforms import ToTensor
 import imgaug.augmenters as iaa
@@ -115,9 +116,9 @@ class TUSIMPLE(DETECTION):
         self._db_inds = np.arange(len(self._image_ids))
 
     def _load_data(self):
-        print("loading from cache file: {}".format(self._cache_file))
+        logger.info("loading from cache file: {}".format(self._cache_file))
         if not os.path.exists(self._cache_file):
-            print("No cache file found...")
+            logger.info("No cache file found...")
             self._extract_data()
             self._transform_annotations()
 
@@ -207,7 +208,7 @@ class TUSIMPLE(DETECTION):
         return new_anno
 
     def _transform_annotations(self):
-        print('Now transforming annotations...')
+        logger.info('Now transforming annotations...')
         self._annotations = {}
         for image_id, old_anno in self._old_annotations.items():
             self._annotations[image_id] = self._transform_annotation(old_anno)

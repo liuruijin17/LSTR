@@ -9,14 +9,23 @@
 * 😎Training friendly: Lower GPU memory cost. Input (360, 640, 3) with batch_size 16 uses 1245MiB GPU usages.
 
 
-
 PyTorch(1.5.0) training, evaluating and pretrained models for LSTR (Lane Shape Prediction with Transformers).
 We streamline the lane detection to a single-stage framework by proposing a novel lane shape model that achieves 96.18
 TuSimple accuracy.
 
 For details see [End-to-end Lane Shape Prediction with Transformers](https://arxiv.org/pdf/2011.04233.pdf) by Ruijin Liu, Zejian Yuan, Tie Liu, Zhiliang Xiong.
 
-:star: ***[LSTR for CULane] (Please refer to the [culane branch](https://github.com/liuruijin17/LSTR/tree/culane)) - 2020-12-06***
+## Updates!!
+* 【2021/11/16】 We fix the [multi-GPU training](https://github.com/liuruijin17/LSTR/issues/35).
+* 【2020/12/06】 We now support [CULane Dataset](https://github.com/liuruijin17/LSTR/tree/culane).
+
+## Comming soon
+- [ ] LSTR-nano(New backbone): 96.33 TuSimple accuracy with only 40% MACs (229.419M) and 40% #Params (302,546) of LSTR.
+- [ ] Mosaic Augmentation.
+- [ ] Loguru based logger module.
+- [ ] Geometry based loss functions.
+- [ ] Segmentation prior.
+
 
 ## Model Zoo
 We provide the baseline LSTR model file (trained on TuSimple train and val sets after 500000 iterations) in

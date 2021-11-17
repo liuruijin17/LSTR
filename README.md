@@ -74,14 +74,14 @@ To train a model:
 (if you only want to use the train set, please see ./config/LSTR.json and
 set "train_split": "train")
 ```
-python train.py LSTR
+python train.py LSTR -d 1
 ```
 * Visualized images are in ./results during training.
 * Saved model files (every 5000 iterations) are in ./cache during training.
 
 To train a model from a snapshot model file:
 ```
-python train.py LSTR --iter 500000
+python train.py LSTR --iter 500000 -d 1
 ```
 
 To evaluate (GPU 603MiB usage when evaluating single image iteratively), then you will see the paper's result:

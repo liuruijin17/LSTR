@@ -86,17 +86,12 @@ python train.py LSTR --iter 500000 -d 4
 
 To evaluate (GPU 603MiB usage when evaluating single image iteratively), then you will see the paper's result:
 ```
-python test.py LSTR --testiter 500000 --modality eval --split testing
+python test.py LSTR -c 507640 -s testing -m eval -b 16 -d 1
 ```
 
-To evaluate FPS (set --batch to maximum the FPS, GPU 877MiB usage if you repeat each image 16 times):
+To evaluate and save detected images in ./results/LSTR/507640/testing/lane_debug:
 ```
-python test.py LSTR --testiter 500000 --modality eval --split testing --batch 16
-```
-
-To evaluate and save detected images in ./results/LSTR/500000/testing/lane_debug:
-```
-python test.py LSTR --testiter 500000 --modality eval --split testing --debug
+python test.py LSTR -c 507640 -s testing -m eval -b 1 -d 1 --debug
 ```
 
 * Demo (displayed parameters are rounded to three significant figures.)
@@ -105,12 +100,12 @@ python test.py LSTR --testiter 500000 --modality eval --split testing --debug
 
 To evaluate and save decoder attention maps (store --debugEnc to visualize encoder attention maps):
 ```
-python test.py LSTR --testiter 500000 --modality eval --split testing --debug --debugDec
+python test.py LSTR -c 507640 -m eval -s testing -b 1 -d 1 --debug --debugDec
 ```
 
 To evaluate on a set of images (store your images in ./images, then the detected results will be saved in ./detections):
 ```
-python test.py LSTR --testiter 500000 --modality images --image_root ./ --debug
+python test.py LSTR -c 507640 -m images -s testing -b 1 -d 1 --image_root ./ --debug
 ```
 
 ## Citation

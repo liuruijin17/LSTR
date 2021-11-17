@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import json
 import torch
 import argparse
@@ -14,6 +14,7 @@ from config import system_configs
 from nnet.py_factory import NetworkFactory
 from db.datasets import datasets
 from db.utils.evaluator import Evaluator
+from models.py_utils.dist import get_num_devices, synchronize, get_rank
 
 torch.backends.cudnn.benchmark = False
 
@@ -29,12 +30,13 @@ def parse_args():
     parser.add_argument("--suffix", dest="suffix", default=None, type=str)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("-m", "--modality", dest="modality",
-                        default=None, type=str)
+                        default="eval", type=str)
     parser.add_argument("--image_root", dest="image_root",
                         default=None, type=str)
     parser.add_argument("-b", "--batch", dest='batch',
                         help="select a value to maximum your FPS",
                         default=1, type=int)
+    parser.add_argument("-d", "--devices", default=None, type=int, help="device for training")
     parser.add_argument("--debugEnc", action="store_true")
     parser.add_argument("--debugDec", action="store_true")
     args = parser.parse_args()
@@ -47,7 +49,7 @@ def make_dirs(directories):
 
 def test(db, split, testiter,
          debug=False, suffix=None, modality=None, image_root=None, batch=1,
-         debugEnc=False, debugDec=False):
+         debugEnc=False, debugDec=False, num_gpu=None):
     result_dir = system_configs.result_dir
     result_dir = os.path.join(result_dir, str(testiter), split)
 
@@ -59,7 +61,7 @@ def test(db, split, testiter,
     logger.info("loading parameters at iteration: {}".format(test_iter))
 
     logger.info("building neural network...")
-    nnet = NetworkFactory()
+    nnet = NetworkFactory(num_gpu=num_gpu)
 
     logger.info("loading parameters...")
     nnet.load_params(test_iter)
@@ -90,6 +92,9 @@ def test(db, split, testiter,
 if __name__ == "__main__":
     args = parse_args()
 
+    num_gpu = get_num_devices() if args.devices is None else args.devices
+    assert num_gpu <= get_num_devices()
+
     if args.suffix is None:
         cfg_file = os.path.join(system_configs.config_dir, args.cfg_file + ".json")
     else:
@@ -100,6 +105,12 @@ if __name__ == "__main__":
         configs = json.load(f)
             
     configs["system"]["snapshot_name"] = args.cfg_file
+    configs["system"]["snapshot_name"] = args.cfg_file
+    num_imgs_per_gpu = configs["system"]["batch_size"] // num_gpu
+    chunk_sizes = [num_imgs_per_gpu] * (num_gpu - 1)
+    chunk_sizes.append(configs["system"]["batch_size"] - sum(chunk_sizes))
+    configs["system"]["chunk_sizes"] = chunk_sizes
+
     system_configs.update_config(configs["system"])
 
     train_split = system_configs.train_split
@@ -128,4 +139,5 @@ if __name__ == "__main__":
          args.image_root,
          args.batch,
          args.debugEnc,
-         args.debugDec,)
+         args.debugDec,
+         num_gpu)

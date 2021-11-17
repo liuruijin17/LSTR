@@ -41,7 +41,7 @@ class DummyModule(nn.Module):
         return self.module(*xs, **kwargs)
 
 class NetworkFactory(object):
-    def __init__(self, flag: bool = False):
+    def __init__(self, flag: bool = False, num_gpu: int = None):
         super(NetworkFactory, self).__init__()
         module_file = "models.{}".format(system_configs.snapshot_name)
         nnet_module = importlib.import_module(module_file)
@@ -51,7 +51,7 @@ class NetworkFactory(object):
         self.network = Network(self.model, self.loss)
 
         # logger.info("Images of one batch are split on multi-GPU with: {}".format(system_configs.chunk_sizes))
-        self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes)
+        self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes, device_ids=range(num_gpu))
 
         # True: Training / False: Testing
         self.flag    = flag

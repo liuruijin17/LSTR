@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 import json
 import torch
 import queue
@@ -13,11 +13,11 @@ import traceback
 import numpy as np
 from loguru import logger
 
+import models.py_utils.misc as utils
 from config import system_configs
 from nnet.py_factory import NetworkFactory
 from torch.multiprocessing import Process, Queue, Pool
 from db.datasets import datasets
-import models.py_utils.misc as utils
 from models.py_utils.dist import get_num_devices, synchronize
 from db.utils.evaluator import Evaluator
 from models.py_utils.dist import get_rank
@@ -27,13 +27,13 @@ torch.backends.cudnn.enabled   = True
 torch.backends.cudnn.benchmark = True
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train CornerNet")
+    parser = argparse.ArgumentParser(description="Train LSTR")
     parser.add_argument("cfg_file", help="config file", type=str)
     parser.add_argument("-c", "--iter", dest="start_iter",
                         help="train at iteration i",
                         default=0, type=int)
     parser.add_argument("-t", "--threads", dest="threads", default=4, type=int)
-    parser.add_argument("-d", "--devices", default=1, type=int, help="device for training")
+    parser.add_argument("-d", "--devices", default=None, type=int, help="device for training")
 
     args = parser.parse_args()
     return args
@@ -74,7 +74,7 @@ def init_parallel_jobs(dbs, queue, fn):
         task.start()
     return tasks
 
-def train(training_dbs, validation_db, start_iter: int = 0):
+def train(training_dbs, validation_db, start_iter: int = 0, num_gpu: int = None):
     learning_rate    = system_configs.learning_rate
     max_iteration    = system_configs.max_iter
     pretrained_model = system_configs.pretrain
@@ -123,7 +123,7 @@ def train(training_dbs, validation_db, start_iter: int = 0):
     validation_pin_thread.start()
 
     logger.info("building model...")
-    nnet = NetworkFactory(flag=True)
+    nnet = NetworkFactory(flag=True, num_gpu=num_gpu)
 
     if pretrained_model is not None:
         if not os.path.exists(pretrained_model):
@@ -245,13 +245,7 @@ if __name__ == "__main__":
     training_dbs  = [datasets[dataset](configs["db"], train_split) for _ in range(threads)]
     validation_db = datasets[dataset](configs["db"], val_split)
 
-    # print("system config...")
-    # pprint.pprint(system_configs.full)
-    #
-    # print("db config...")
-    # pprint.pprint(training_dbs[0].configs)
 
     logger.info("len of training db: {}".format(len(training_dbs[0].db_inds)))
     logger.info("len of testing db: {}".format(len(validation_db.db_inds)))
-    # logger.info("freeze the pretrained network: {}".format(args.freeze))
-    train(training_dbs, validation_db, args.start_iter) # 0
+    train(training_dbs, validation_db, args.start_iter, num_gpu)

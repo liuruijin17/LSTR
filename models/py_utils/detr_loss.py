@@ -32,9 +32,10 @@ class SetCriterion(nn.Module):
         # self.threshold = nn.Threshold(threshold**2, 0.)
         # empty_weight = torch.ones(self.num_classes + 1)
         empty_weight = torch.ones(self.num_classes)
-        empty_weight[-1] = self.eos_coef
+        # empty_weight[-1] = self.eos_coef
 
         self.register_buffer('empty_weight', empty_weight)
+        print(self.empty_weight)
 
     def loss_labels(self, outputs, targets, indices, num_curves, log=True):
         """Classification loss (NLL)

@@ -159,7 +159,7 @@ class kp(nn.Module):
                                              pre_norm=pre_norm,
                                              return_intermediate_dec=return_intermediate)
 
-        self.class_embed    = nn.Linear(hidden_dim, num_cls + 1)
+        self.class_embed    = nn.Linear(hidden_dim, num_cls)
         self.specific_embed = MLP(hidden_dim, hidden_dim, lsp_dim - 4, mlp_layers)
         self.shared_embed   = MLP(hidden_dim, hidden_dim, 4, mlp_layers)
 

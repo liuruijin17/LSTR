@@ -18,9 +18,8 @@ from config import system_configs
 from nnet.py_factory import NetworkFactory
 from torch.multiprocessing import Process, Queue, Pool
 from db.datasets import datasets
-from models.py_utils.dist import get_num_devices, synchronize
+from models.py_utils.dist import get_num_devices, synchronize, get_rank
 from db.utils.evaluator import Evaluator
-from models.py_utils.dist import get_rank
 from utils.logger import setup_logger
 
 torch.backends.cudnn.enabled   = True

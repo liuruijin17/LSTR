@@ -51,7 +51,8 @@ class NetworkFactory(object):
         self.network = Network(self.model, self.loss)
 
         # logger.info("Images of one batch are split on multi-GPU with: {}".format(system_configs.chunk_sizes))
-        self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes, device_ids=range(num_gpu))
+        self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes, device_ids=list(range(num_gpu)))
+        # self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes)
 
         # True: Training / False: Testing
         self.flag    = flag

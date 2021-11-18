@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import os
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 import json
 import torch
 import queue
@@ -193,7 +191,7 @@ def train(training_dbs, validation_db, start_iter: int = 0, num_gpu: int = None)
             res_dir = os.path.join(system_configs.result_dir, str(iteration), 'TestDuringTraining')
             make_dirs([res_dir])
             evaluator = Evaluator(validation_db, res_dir)
-            _ = testing(validation_db, nnet, res_dir, evaluator=evaluator, batch_size=64)
+            _ = testing(validation_db, nnet, evaluator=evaluator, batch_size=64)
             nnet.train_mode()
             synchronize()
             nnet.save_params(iteration)

@@ -16,7 +16,7 @@ TuSimple accuracy.
 For details see [End-to-end Lane Shape Prediction with Transformers](https://arxiv.org/pdf/2011.04233.pdf) by Ruijin Liu, Zejian Yuan, Tie Liu, Zhiliang Xiong.
 
 ## Updates!!
-* 【2021/11/16】 We fix the [multi-GPU training](https://github.com/liuruijin17/LSTR/issues/35).
+* 【2021/11/16】 We fix the [multi-GPU training](https://github.com/liuruijin17/LSTR/tree/multiGPU).
 * 【2020/12/06】 We now support [CULane Dataset](https://github.com/liuruijin17/LSTR/tree/culane).
 
 ## Comming soon
@@ -28,14 +28,12 @@ For details see [End-to-end Lane Shape Prediction with Transformers](https://arx
 
 
 ## Model Zoo
-We provide the baseline LSTR model file (trained on TuSimple train and val sets after 500000 iterations) in
-the ./cache/nnet/LSTR/LSTR_500000.pkl (~3.1MB).
-
+We provide the baseline LSTR model file in the ./cache/nnet/LSTR/
 
 ## Data Preparation
 Download and extract TuSimple train, val and test with annotations from [TuSimple](https://github.com/TuSimple/tusimple-benchmark).
 We expect the directory structure to be the following:
-```
+```shell script
 TuSimple/
     LaneDetection/
         clips/
@@ -46,66 +44,53 @@ TuSimple/
     LSTR/
 ```
 
-## Set Envirionment
+## Install
 
 * Linux ubuntu 16.04
-
-
-```
+```shell script
+git clone https://github.com/liuruijin17/LSTR.git -b multiGPU
 conda env create --name lstr --file environment.txt
-```
-
-After you create the environment, activate it
-
-```
 conda activate lstr
-```
-
-Then
-
-```
 pip install -r requirements.txt
 ```
 
 ## Training and Evaluation
 
 To train a model:
-
-(if you only want to use the train set, please see ./config/LSTR.json and
-set "train_split": "train")
-```
-python train.py LSTR -d 4
+(if you only want to use the train set, please see ./config/LSTR.json and set "train_split": "train")
+```shell script
+python train.py LSTR -d 1 -t 8
 ```
 * Visualized images are in ./results during training.
-* Saved model files (every 5000 iterations) are in ./cache during training.
+* Saved model files are in ./cache during training.
 
 To train a model from a snapshot model file:
-```
-python train.py LSTR --iter 500000 -d 4
-```
-
-To evaluate (GPU 603MiB usage when evaluating single image iteratively), then you will see the paper's result:
-```
-python test.py LSTR -c 507640 -s testing -m eval -b 16 -d 1
+```shell script
+python train.py LSTR -d 1 -t 8 -c 507640 
 ```
 
-To evaluate and save detected images in ./results/LSTR/507640/testing/lane_debug:
+To evaluate, then you will a result better than the paper's:
+```shell script
+python test.py LSTR -d 1 -b 16 -s testing -c 507640 
 ```
-python test.py LSTR -c 507640 -s testing -m eval -b 1 -d 1 --debug
+
+To demon TuSimple images in ./results/LSTR/507640/testing/lane_debug:
+```shell script
+python demo.py LSTR
 ```
 
 * Demo (displayed parameters are rounded to three significant figures.)
 
 ![Demo](.github/0601_1494453331677390055_20_resize.jpg)
 
-To evaluate and save decoder attention maps (store --debugEnc to visualize encoder attention maps):
-```
-python test.py LSTR -c 507640 -m eval -s testing -b 1 -d 1 --debug --debugDec
+To demo TuSimple decoder attention maps (store --debugEnc to visualize encoder attention maps):
+```shell script
+python demo.py LSTR -dec
 ```
 
-To evaluate on a set of images (store your images in ./images, then the detected results will be saved in ./detections):
-```
-python test.py LSTR -c 507640 -m images -s testing -b 1 -d 1 --image_root ./ --debug
+To demo on your images (put them in ./assets, then their results will be saved in ./assets_output):
+```shell script
+python demo.py LSTR -f ./assets
 ```
 
 ## Citation

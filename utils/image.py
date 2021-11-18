@@ -6,6 +6,10 @@ def grayscale(image):
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
 def normalize_(image, mean, std):
+    # if mean is None:
+    #     mean =
+    # if std is None:
+    #     std =
     image -= mean
     image /= std
 

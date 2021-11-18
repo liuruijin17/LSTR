@@ -12,8 +12,8 @@
         "learning_rate": 0.0001,
         "decay_rate": 10,
 
-        "val_iter": 100,
-        "display": 100,
+        "val_iter": 500,
+        "display": 500,
 
         "opt_algo": "adam",
         "prefetch_size": 5,

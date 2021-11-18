@@ -16,8 +16,8 @@ class BASE(object):
         self._image_file      = None
         self._image_hdf5_file = None
 
-        self._mean = np.zeros((3, ), dtype=np.float32)
-        self._std = np.ones((3, ), dtype=np.float32)
+        self._mean    = np.zeros((3, ), dtype=np.float32)
+        self._std     = np.ones((3, ), dtype=np.float32)
         self._eig_val = np.ones((3, ), dtype=np.float32)
         self._eig_vec = np.zeros((3, 3), dtype=np.float32)
 

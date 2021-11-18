@@ -39,7 +39,7 @@ PRED_COLOR = [RED, GREEN, DARK_GREEN, PURPLE, CHOCOLATE, PEACHPUFF, STATEGRAY]
 PRED_HIT_COLOR = GREEN
 PRED_MISS_COLOR = RED
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
-IMAGENET_STD = np.array([0.229, 0.224, 0.225])
+IMAGENET_STD  = np.array([0.229, 0.224, 0.225])
 
 class TUSIMPLE(DETECTION):
     def __init__(self, db_config, split):
@@ -50,7 +50,6 @@ class TUSIMPLE(DETECTION):
         max_lanes   = system_configs.max_lanes
         self.metric = 'default'
         inp_h, inp_w = db_config['input_size']
-
         self._split = split
         self._dataset = {
             "train": ['label_data_0313', 'label_data_0601'],
@@ -58,7 +57,6 @@ class TUSIMPLE(DETECTION):
             "train+val": ['label_data_0313', 'label_data_0601', 'label_data_0531'],
             "val": ['label_data_0531'],
         }[self._split]
-
         self.root = os.path.join(data_dir, 'TuSimple', 'LaneDetection')
         if self.root is None:
             raise Exception('Please specify the root directory')
@@ -68,23 +66,17 @@ class TUSIMPLE(DETECTION):
         self.to_tensor = ToTensor()
         self.aug_chance = 0.9090909090909091
         self._image_file = []
-
         self.augmentations = [{'name': 'Affine', 'parameters': {'rotate': (-10, 10)}},
                               {'name': 'HorizontalFlip', 'parameters': {'p': 0.5}},
                               {'name': 'CropToFixedSize', 'parameters': {'height': 648, 'width': 1152}}]
-
-
-        # Force max_lanes, used when evaluating testing with models trained on other datasets
         if max_lanes is not None:
             self.max_lanes = max_lanes
-
         self.anno_files = [os.path.join(self.root, path + '.json') for path in self._dataset]
-
         self._data = "tusimple"
-        # self._mean = np.array([0.573392775, 0.58143508, 0.573799285], dtype=np.float32) # [0.59007017 0.59914317 0.58877597]  # [0.55671538 0.56372699 0.55888226]
-        # self._std = np.array([0.01633231, 0.01760496, 0.01697805], dtype=np.float32) #
+
+        # Below mean, std, eig_val, and eig_vec are copied from CornerNet
         self._mean = np.array([0.40789654, 0.44719302, 0.47026115], dtype=np.float32)
-        self._std = np.array([0.28863828, 0.27408164, 0.27809835], dtype=np.float32)
+        self._std  = np.array([0.28863828, 0.27408164, 0.27809835], dtype=np.float32)
         self._eig_val = np.array([0.2141788, 0.01817699, 0.00341571], dtype=np.float32)
         self._eig_vec = np.array([
             [-0.58752847, -0.69563484, 0.41340352],
@@ -213,29 +205,6 @@ class TUSIMPLE(DETECTION):
         for image_id, old_anno in self._old_annotations.items():
             self._annotations[image_id] = self._transform_annotation(old_anno)
 
-    def detections(self, ind):
-        image_id  = self._image_ids[ind]
-        item      = self._annotations[image_id]
-        return item
-
-    def __len__(self):
-        return len(self._annotations)
-
-    def _to_float(self, x):
-        return float("{:.2f}".format(x))
-
-    def class_name(self, cid):
-        cat_id = self._classes[cid]
-        return cat_id
-
-    def get_metrics(self, lanes, idx):
-        label = self._annotations[idx]
-        org_anno = label['old_anno']
-        pred = self.pred2lanes(org_anno['path'], lanes, org_anno['y_samples'])
-        _, _, _, matches, accs, dist = LaneEval.bench(pred, org_anno['org_lanes'], org_anno['y_samples'], 0, True)
-
-        return matches, accs, dist
-
     def pred2lanes(self, path, pred, y_samples):
         ys = np.array(y_samples) / self.img_h
         lanes = []
@@ -271,21 +240,6 @@ class TUSIMPLE(DETECTION):
             img = (img - IMAGENET_MEAN) / IMAGENET_STD
         img = self.to_tensor(img.astype(np.float32))
         return (img, label, idx)
-
-    def lane_to_linestrings(self, lanes):
-        lines = []
-        for lane in lanes:
-            lines.append(LineString(lane))
-
-        return lines
-
-    def linestrings_to_lanes(self, lines):
-        lanes = []
-        for line in lines:
-            lanes.append(line.coords)
-
-        return lanes
-
 
     def draw_annotation(self, idx, pred=None, img=None, cls_pred=None):
         if img is None:
@@ -360,15 +314,6 @@ class TUSIMPLE(DETECTION):
             for current_point, next_point in zip(points[:-1], points[1:]):
                 overlay = cv2.line(overlay, tuple(current_point), tuple(next_point), color=color, thickness=7)
 
-            # draw class icon
-            if cls_pred is not None and len(points) > 0:
-                class_icon = self.get_class_icon(cls_pred[i])
-                class_icon = cv2.resize(class_icon, (32, 32))
-                mid = tuple(points[len(points) // 2] - 60)
-                x, y = mid
-
-                img[y:y + class_icon.shape[0], x:x + class_icon.shape[1]] = class_icon
-
             # draw lane ID
             if len(points) > 0:
                 cv2.putText(img, str(i), tuple(points[len(points)//3]), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=color,
@@ -430,6 +375,44 @@ class TUSIMPLE(DETECTION):
                 json.dump(result, out_file)
 
         return table, result
+
+    def lane_to_linestrings(self, lanes):
+        lines = []
+        for lane in lanes:
+            lines.append(LineString(lane))
+
+        return lines
+
+    def linestrings_to_lanes(self, lines):
+        lanes = []
+        for line in lines:
+            lanes.append(line.coords)
+
+        return lanes
+
+    def detections(self, ind):
+        image_id  = self._image_ids[ind]
+        item      = self._annotations[image_id]
+        return item
+
+    def __len__(self):
+        return len(self._annotations)
+
+    def _to_float(self, x):
+        return float("{:.2f}".format(x))
+
+    def class_name(self, cid):
+        cat_id = self._classes[cid]
+        return cat_id
+
+    def get_metrics(self, lanes, idx):
+        label = self._annotations[idx]
+        org_anno = label['old_anno']
+        pred = self.pred2lanes(org_anno['path'], lanes, org_anno['y_samples'])
+        _, _, _, matches, accs, dist = LaneEval.bench(pred, org_anno['org_lanes'], org_anno['y_samples'], 0, True)
+
+        return matches, accs, dist
+
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):

@@ -1,7 +1,7 @@
 import numpy as np
 
 class Evaluator(object):
-    def __init__(self, dataset, exp_dir):
+    def __init__(self, dataset, exp_dir: str = ""):
         self.dataset = dataset
         self.predictions = None
         self.runtimes = np.zeros(len(dataset))

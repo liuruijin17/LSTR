@@ -39,7 +39,7 @@ def test(db, split, ckpt, suffix=None, batch=None, num_gpu=None):
     nnet.cuda()
     nnet.eval_mode()
     nnet.model.load_state_dict(ckpt["model"])
-    evaluator = Evaluator(db, result_dir)
+    evaluator = Evaluator(db, exp_dir=result_dir)
     testing = importlib.import_module("test.{}".format(db._data)).testing
     eval_str, eval_result = testing(db, nnet, evaluator, batch)
     logger.info('\n{}'.format(eval_str))

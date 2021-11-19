@@ -125,7 +125,7 @@ def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = Fa
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     testing_func = importlib.import_module("test.{}".format(validation_db._data)).testing
     best_res = 0.
-    for iteration in metric_logger.log_every((range(start_iter + 1, max_iteration + 1)), print_freq=10):
+    for iteration in metric_logger.log_every((range(start_iter + 1, max_iteration + 1)), print_freq=100):
 
         training = pinned_training_queue.get(block=True)
         viz_split = 'train'
@@ -159,11 +159,10 @@ def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = Fa
             learning_rate /= decay_rate
             nnet.set_lr(learning_rate)
 
-        if iteration % (1 * training_size // batch_size) == 0:
+        if iteration % (20 * training_size // batch_size) == 0:
             metric_logger.synchronize_between_processes()
             nnet.eval_mode()
-            res_dir = os.path.join(system_configs.result_dir, str(iteration), 'test_during_training')
-            evaluator = Evaluator(validation_db, res_dir)
+            evaluator = Evaluator(validation_db)
             eval_str, eval_result = testing_func(validation_db, nnet, evaluator, 64, True)
             logger.info('\n{}'.format(eval_str))
             logger.info("best metric is: {}".format(eval_result[0]['value']))
@@ -172,8 +171,7 @@ def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = Fa
             synchronize()
 
     nnet.eval_mode()
-    res_dir = os.path.join(system_configs.result_dir, str(max_iteration), 'test_during_training')
-    evaluator = Evaluator(validation_db, res_dir)
+    evaluator = Evaluator(validation_db)
     eval_str, eval_result = testing_func(validation_db, nnet, evaluator, 64, True)
     logger.info('\n{}'.format(eval_str))
     logger.info("best metric is: {}".format(eval_result[0]['value']))

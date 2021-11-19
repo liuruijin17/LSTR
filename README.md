@@ -66,12 +66,12 @@ python train.py LSTR -d 1 -t 8
 
 To train a model from a snapshot model file:
 ```shell script
-python train.py LSTR -d 1 -t 8 -c 507640 
+python train.py LSTR -d 1 -t 8 -r 
 ```
 
 To evaluate, then you will a result better than the paper's:
 ```shell script
-python test.py LSTR -d 1 -b 16 -s testing -c 507640 
+python test.py LSTR -d 1 -b 16 
 ```
 
 To demon TuSimple images in ./results/LSTR/507640/testing/lane_debug:

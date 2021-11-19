@@ -104,11 +104,11 @@ def convert_tusimple_format(json_gt):
     return output
 
 
-def eval_json(pred_file, gt_file, json_type=None, debug=False):
-    try:
-        json_pred = [json.loads(line) for line in open(pred_file).readlines()]
-    except BaseException as e:
-        raise Exception('Fail to load json file of the prediction.')
+def eval_json(json_pred, gt_file, json_type=None, debug=False):
+    # try:
+    #     json_pred = [json.loads(line) for line in open(pred_file).readlines()]
+    # except BaseException as e:
+    #     raise Exception('Fail to load json file of the prediction.')
     json_gt = [json.loads(line) for line in open(gt_file).readlines()]
     if len(json_gt) != len(json_pred):
         raise Exception('We do not get the predictions of all the test tasks')

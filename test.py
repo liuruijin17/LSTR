@@ -18,7 +18,7 @@ torch.backends.cudnn.benchmark = False
 def parse_args():
     parser = argparse.ArgumentParser(description="Test LSTR")
     parser.add_argument("cfg_file", help="config file", type=str)
-    parser.add_argument("-c", "--testiter", dest="testiter", default=None, type=int)
+    parser.add_argument("-c", "--checkpoint", dest="checkpoint", default=None, type=str)
     parser.add_argument("-s", "--split", dest="split", default="testing", type=str)
     parser.add_argument("--suffix", dest="suffix", default=None, type=str)
     parser.add_argument("-b", "--batch", dest='batch', default=1, type=int)
@@ -26,25 +26,23 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def test(db, split, testiter, suffix=None, batch=None, num_gpu=None):
-    testiter = system_configs.max_iter if testiter is None else testiter
-    result_dir = system_configs.result_dir
-    result_dir = os.path.join(result_dir, str(testiter), split)
+def test(db, split, ckpt, suffix=None, batch=None, num_gpu=None):
+
+    testiter = ckpt["start_iter"]
+    result_dir = os.path.join(system_configs.result_dir, str(testiter), split)
     if suffix is not None:
         result_dir = os.path.join(result_dir, suffix)
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
 
     logger.info("building neural network...")
     nnet = NetworkFactory(num_gpu=num_gpu)
     logger.info("loading parameters at iteration: {}...".format(testiter))
-    nnet.load_params(testiter)
     nnet.cuda()
     nnet.eval_mode()
+    nnet.model.load_state_dict(ckpt["model"])
     evaluator = Evaluator(db, result_dir)
-
     testing = importlib.import_module("test.{}".format(db._data)).testing
-    testing(db, nnet, evaluator=evaluator, batch_size=batch)
+    eval_str, eval_result = testing(db, nnet, evaluator, batch)
+    logger.info('\n{}'.format(eval_str))
 
 if __name__ == "__main__":
     args = parse_args()
@@ -76,4 +74,11 @@ if __name__ == "__main__":
     logger.info("split: {}".format(split))  # test
     testing_db = datasets[dataset](configs["db"], split)
 
-    test(testing_db, args.split, args.testiter, args.suffix, args.batch, num_gpu)
+    if args.checkpoint is None:
+        ckpt_file = system_configs.snapshot_file.format("best")
+    else:
+        ckpt_file = args.checkpoint
+    logger.info("loading checkpoint from {}".format(ckpt_file))
+    ckpt = torch.load(ckpt_file)
+
+    test(testing_db, args.split, ckpt, args.suffix, args.batch, num_gpu)

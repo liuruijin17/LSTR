@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import torch
 import importlib
 import torch.nn as nn
@@ -149,7 +151,6 @@ class NetworkFactory(object):
 
     def test(self, xs, **kwargs):
         with torch.no_grad():
-            # xs = [x.cuda(non_blocking=True) for x in xs]
             return self.model(*xs, **kwargs)
 
     def set_lr(self, lr):
@@ -157,30 +158,62 @@ class NetworkFactory(object):
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
-    def load_pretrained_params(self, pretrained_model):
-        logger.info("loading from {}".format(pretrained_model))
-        with open(pretrained_model, "rb") as f:
-            params = torch.load(f)
-            self.model.load_state_dict(params)
-
-    def load_params(self, iteration, is_bbox_only=False):
-        cache_file = system_configs.snapshot_file.format(iteration)
-
-        with open(cache_file, "rb") as f:
-            params = torch.load(f)
-            model_dict = self.model.state_dict()
-            if len(params) != len(model_dict):
-                pretrained_dict = {k: v for k, v in params.items() if k in model_dict}
-            else:
-                pretrained_dict = params
-            model_dict.update(pretrained_dict)
-
-            self.model.load_state_dict(model_dict)
-
-
-    def save_params(self, iteration):
-        cache_file = system_configs.snapshot_file.format(iteration)
+    def save_params(self, iteration, update_best_ckpt, model_name=""):
+        save_model = self.model
+        if len(model_name) > 0:
+            cache_file = system_configs.snapshot_file.format(model_name)
+        else:
+            cache_file = system_configs.snapshot_file.format("latest")
         logger.info("saving model to {}".format(cache_file))
-        with open(cache_file, "wb") as f:
-            params = self.model.state_dict()
-            torch.save(params, f)
+        ckpt_state = {
+            "start_iter": iteration,
+            "model": save_model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+        }
+        torch.save(ckpt_state, cache_file)
+        if update_best_ckpt:
+            best_filename = system_configs.snapshot_file.format("best")
+            shutil.copyfile(cache_file, best_filename)
+
+    def load_ckpt(self, model, ckpt):
+        model_state_dict = model.state_dict()
+        load_dict = {}
+        for key_model, v in model_state_dict.items():
+            if key_model not in ckpt:
+                logger.warning(
+                    "{} is not in the ckpt. Please double check and see if this is desired.".format(
+                        key_model
+                    )
+                )
+                continue
+            v_ckpt = ckpt[key_model]
+            if v.shape != v_ckpt.shape:
+                logger.warning(
+                    "Shape of {} in checkpoint is {}, while shape of {} in model is {}.".format(
+                        key_model, v_ckpt.shape, key_model, v.shape
+                    )
+                )
+                continue
+            load_dict[key_model] = v_ckpt
+        model.load_state_dict(load_dict, strict=False)
+        return model
+
+    def resume_train(self, nnet, ckpt, resume):
+        start_iter = 0
+        if resume:
+            logger.info("resume training")
+            if ckpt is None:
+                ckpt_file = system_configs.snapshot_file.format("latest")
+            else:
+                ckpt_file = ckpt
+            ckpt = torch.load(ckpt_file)
+            nnet.model.load_state_dict(ckpt["model"])
+            self.optimizer.load_state_dict(ckpt["optimizer"])
+            start_iter = ckpt["start_iter"]
+            logger.info("loaded checkpoint '{}' (iter {})".format(ckpt_file, start_iter))  # noqa
+        else:
+            if ckpt is not None:
+                logger.info("loading checkpoint for fine tuning")
+                ckpt = torch.load(ckpt)["model"]
+                nnet.model = self.load_ckpt(nnet.model, ckpt)
+        return nnet, start_iter

@@ -72,11 +72,11 @@ class LaneEval(object):
         return s / max(min(4.0, len(gt)), 1.), fp / len(pred) if len(pred) > 0 else 0., fn / max(min(len(gt), 4.), 1.)
 
     @staticmethod
-    def bench_one_submit(pred_file, gt_file):
-        try:
-            json_pred = [json.loads(line) for line in open(pred_file).readlines()]
-        except BaseException as e:
-            raise Exception('Fail to load json file of the prediction.')
+    def bench_one_submit(json_pred, gt_file):
+        # try:
+        #     json_pred = [json.loads(line) for line in open(pred_file).readlines()]
+        # except BaseException as e:
+        #     raise Exception('Fail to load json file of the prediction.')
         # json_gt = [json.loads(line) for line in open(gt_file).readlines()]
         json_gt = []
         for gtf in gt_file:

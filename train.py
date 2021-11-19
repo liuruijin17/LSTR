@@ -26,19 +26,13 @@ torch.backends.cudnn.benchmark = True
 def parse_args():
     parser = argparse.ArgumentParser(description="Train LSTR")
     parser.add_argument("cfg_file", help="config file", type=str)
-    parser.add_argument("-c", "--iter", dest="start_iter",
-                        help="train at iteration i",
-                        default=0, type=int)
+    parser.add_argument("-c", "--checkpoint", dest="checkpoint", default=None, type=str)
     parser.add_argument("-t", "--threads", dest="threads", default=4, type=int)
     parser.add_argument("-d", "--devices", default=None, type=int, help="device for training")
+    parser.add_argument("-r", "--resume", action="store_true")
 
     args = parser.parse_args()
     return args
-
-def make_dirs(directories):
-    for directory in directories:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
 
 def prefetch_data(db, queue, sample_data):
     ind = 0
@@ -71,11 +65,11 @@ def init_parallel_jobs(dbs, queue, fn):
         task.start()
     return tasks
 
-def train(training_dbs, validation_db, start_iter: int = 0, num_gpu: int = None):
+def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = False, num_gpu: int = None):
     learning_rate    = system_configs.learning_rate
     max_iteration    = system_configs.max_iter
-    pretrained_model = system_configs.pretrain
-    snapshot         = system_configs.snapshot
+    # pretrained_model = system_configs.pretrain
+    # snapshot         = system_configs.snapshot
     val_iter         = system_configs.val_iter
     display          = system_configs.display
     decay_rate       = system_configs.decay_rate
@@ -121,32 +115,16 @@ def train(training_dbs, validation_db, start_iter: int = 0, num_gpu: int = None)
 
     logger.info("building model...")
     nnet = NetworkFactory(flag=True, num_gpu=num_gpu)
-
-    if pretrained_model is not None:
-        if not os.path.exists(pretrained_model):
-            raise ValueError("pretrained model does not exist")
-        logger.info("loading from pretrained model")
-        nnet.load_pretrained_params(pretrained_model)
-
-    if start_iter:
-        learning_rate /= (decay_rate ** (start_iter // stepsize))
-        nnet.load_params(start_iter)
-        nnet.set_lr(learning_rate)
-        logger.info("training starts from iteration {} with learning_rate {}".format(start_iter + 1, learning_rate))
-    else:
-        nnet.set_lr(learning_rate)
-
+    nnet, start_iter = nnet.resume_train(nnet, checkpoint, resume)
+    learning_rate /= (decay_rate ** (start_iter // stepsize))
+    nnet.set_lr(learning_rate)
     logger.info("training start...")
     nnet.cuda()
     nnet.train_mode()
-    # header = None
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
-
-    test_file = "test.{}".format(validation_db._data)
-    testing = importlib.import_module(test_file).testing
-
-    # with stdout_to_tqdm() as save_stdout:
+    testing_func = importlib.import_module("test.{}".format(validation_db._data)).testing
+    best_res = 0.
     for iteration in metric_logger.log_every((range(start_iter + 1, max_iteration + 1)), print_freq=10):
 
         training = pinned_training_queue.get(block=True)
@@ -177,26 +155,30 @@ def train(training_dbs, validation_db, start_iter: int = 0, num_gpu: int = None)
             metric_logger.update(lr=learning_rate)
             nnet.train_mode()
 
-        # if iteration % snapshot == 0:
-        #     nnet.save_params(iteration)
-
         if iteration % stepsize == 0:
             learning_rate /= decay_rate
             nnet.set_lr(learning_rate)
 
-        if iteration % (20 * training_size // batch_size) == 0:
+        if iteration % (1 * training_size // batch_size) == 0:
             metric_logger.synchronize_between_processes()
-            logger.info("Averaged stats:", metric_logger)
             nnet.eval_mode()
-            res_dir = os.path.join(system_configs.result_dir, str(iteration), 'TestDuringTraining')
-            make_dirs([res_dir])
+            res_dir = os.path.join(system_configs.result_dir, str(iteration), 'test_during_training')
             evaluator = Evaluator(validation_db, res_dir)
-            _ = testing(validation_db, nnet, evaluator=evaluator, batch_size=64)
+            eval_str, eval_result = testing_func(validation_db, nnet, evaluator, 64, True)
+            logger.info('\n{}'.format(eval_str))
+            logger.info("best metric is: {}".format(eval_result[0]['value']))
+            nnet.save_params(iteration, eval_result[0]['value'] > best_res)
             nnet.train_mode()
             synchronize()
-            nnet.save_params(iteration)
 
-    # sending signal to kill the thread
+    nnet.eval_mode()
+    res_dir = os.path.join(system_configs.result_dir, str(max_iteration), 'test_during_training')
+    evaluator = Evaluator(validation_db, res_dir)
+    eval_str, eval_result = testing_func(validation_db, nnet, evaluator, 64, True)
+    logger.info('\n{}'.format(eval_str))
+    logger.info("best metric is: {}".format(eval_result[0]['value']))
+    nnet.save_params(max_iteration, eval_result[0]['value'] > best_res)
+
     training_pin_semaphore.release()
     validation_pin_semaphore.release()
 
@@ -245,4 +227,4 @@ if __name__ == "__main__":
 
     logger.info("len of training db: {}".format(len(training_dbs[0].db_inds)))
     logger.info("len of testing db: {}".format(len(validation_db.db_inds)))
-    train(training_dbs, validation_db, args.start_iter, num_gpu)
+    train(training_dbs, validation_db, args.checkpoint, args.resume, num_gpu)

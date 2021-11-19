@@ -346,48 +346,47 @@ class TUSIMPLE(DETECTION):
         h_samples = self._annotations[idx]['old_anno']['y_samples']
         lanes = self.pred2lanes(img_name, pred, h_samples)
         output = {'raw_file': img_name, 'lanes': lanes, 'run_time': runtime}
-        return json.dumps(output)
+        return output
 
-    def save_tusimple_predictions(self, predictions, runtimes, filename):
+    def save_tusimple_predictions(self, predictions, runtimes, filename=None):
         lines = []
         for idx in range(len(predictions)):
             line = self.pred2tusimpleformat(idx, predictions[idx], runtimes[idx])
             lines.append(line)
-        with open(filename, 'w') as output_file:
-            output_file.write('\n'.join(lines))
+        # with open(filename, 'w') as output_file:
+        #     output_file.write('\n'.join(lines))
+        return lines
 
-    def eval(self, exp_dir, predictions, runtimes, label=None, only_metrics=False):
-        pred_filename = 'tusimple_{}_predictions_{}.json'.format(self.split, label)
-        pred_filename = os.path.join(exp_dir, pred_filename)
-        self.save_tusimple_predictions(predictions, runtimes, pred_filename)
+    def eval(self, exp_dir, predictions, runtimes, label=None, only_metric=False):
+        # pred_filename = 'tusimple_{}_predictions_{}.json'.format(self.split, label)
+        # pred_filename = os.path.join(exp_dir, pred_filename)
+        predictions = self.save_tusimple_predictions(predictions, runtimes)
         if self.metric == 'default':
-            result = json.loads(LaneEval.bench_one_submit(pred_filename, self.anno_files))
+            result = json.loads(LaneEval.bench_one_submit(predictions, self.anno_files))
         elif self.metric == 'ours':
-            result = json.loads(eval_json(pred_filename, self.anno_files[0], json_type='tusimple'))
+            result = json.loads(eval_json(predictions, self.anno_files[0], json_type='tusimple'))
         table = {}
         for metric in result:
             table[metric['name']] = [metric['value']]
         table = tabulate(table, headers='keys')
-
-        if not only_metrics:
+        if not only_metric:
+            if not os.path.exists(exp_dir):
+                os.makedirs(exp_dir)
             filename = 'tusimple_{}_eval_result_{}.json'.format(self.split, label)
             with open(os.path.join(exp_dir, filename), 'w') as out_file:
                 json.dump(result, out_file)
-
         return table, result
 
     def lane_to_linestrings(self, lanes):
         lines = []
         for lane in lanes:
             lines.append(LineString(lane))
-
         return lines
 
     def linestrings_to_lanes(self, lines):
         lanes = []
         for line in lines:
             lanes.append(line.coords)
-
         return lanes
 
     def detections(self, ind):

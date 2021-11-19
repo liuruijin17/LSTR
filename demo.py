@@ -35,7 +35,7 @@ STD    = np.array([0.28863828, 0.27408164, 0.27809835], dtype=np.float32)  # sam
 def parse_args():
     parser = argparse.ArgumentParser(description="Demo LSTR")
     parser.add_argument("cfg_file", help="config file", type=str)
-    parser.add_argument("-c", "--testiter", dest="testiter", default=None, type=int)
+    parser.add_argument("-c", "--checkpoint", dest="checkpoint", default=None, type=str)
     parser.add_argument("-s", "--split", dest="split", default="testing", type=str)
     parser.add_argument("--suffix", dest="suffix", default=None, type=str)
     parser.add_argument("-f", "--image_root", dest="image_root", default=None, type=str)
@@ -84,14 +84,16 @@ def vis(pred, pad_image):
     img = ((1. - w) * img + w * overlay).astype(np.uint8)
     return img
 
-def demo(test_dir, testiter, result_dir, debugEnc=False, debugDec=False, db=None, num_gpu=None):
-    testiter = system_configs.max_iter if testiter is None else testiter
+def demo(test_dir, ckpt, result_dir, debugEnc=False, debugDec=False, db=None, num_gpu=None):
+
+    testiter = ckpt["start_iter"]
     logger.info("building neural network...")
     nnet = NetworkFactory(num_gpu=num_gpu)
     logger.info("loading parameters at iteration: {}...".format(testiter))
-    nnet.load_params(testiter)
     nnet.cuda()
     nnet.eval_mode()
+    nnet.model.load_state_dict(ckpt["model"])
+
     input_size = [360, 640]
     postprocessors = {'curves': PostProcess()}
     for imgid in tqdm(range(len(test_dir)), ncols=67, desc="Predicting Curves"):
@@ -219,6 +221,13 @@ if __name__ == "__main__":
     configs["system"]["chunk_sizes"] = chunk_sizes
     system_configs.update_config(configs["system"])
 
+    if args.checkpoint is None:
+        ckpt_file = system_configs.snapshot_file.format("best")
+    else:
+        ckpt_file = args.checkpoint
+    logger.info("loading checkpoint from {}".format(ckpt_file))
+    ckpt = torch.load(ckpt_file)
+
     if args.image_root is not None:
         img_root   = args.image_root
         img_names  = os.listdir(img_root)
@@ -243,7 +252,7 @@ if __name__ == "__main__":
         test_dir = []
         for db_ind in range(db.db_inds.size):
             test_dir.append(db.image_file(db_ind))
-        testiter   = system_configs.max_iter if args.testiter is None else args.testiter
+        testiter   = ckpt["start_iter"]
         result_dir = system_configs.result_dir
         result_dir = os.path.join(result_dir, str(testiter), args.split)
         if args.suffix is not None:
@@ -253,4 +262,4 @@ if __name__ == "__main__":
 
     logger.info('Output dir: {}'.format(result_dir))
 
-    demo(test_dir, args.testiter, result_dir, args.debugEnc, args.debugDec, db, num_gpu)
+    demo(test_dir, ckpt, result_dir, args.debugEnc, args.debugDec, db, num_gpu)

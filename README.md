@@ -16,7 +16,7 @@ TuSimple accuracy.
 For details see [End-to-end Lane Shape Prediction with Transformers](https://arxiv.org/pdf/2011.04233.pdf) by Ruijin Liu, Zejian Yuan, Tie Liu, Zhiliang Xiong.
 
 ## Updates!!
-* 【2021/11/16】 We fix the [multi-GPU training](https://github.com/liuruijin17/LSTR/tree/culane).
+* 【2021/11/16】 We fix the [multi-GPU training](https://github.com/liuruijin17/LSTR/tree/multiGPU).
 * 【2020/12/06】 We now support [CULane Dataset](https://github.com/liuruijin17/LSTR/tree/culane).
 
 ## Comming soon

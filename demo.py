@@ -101,8 +101,8 @@ def demo(test_dir, ckpt, result_dir, debugEnc=False, debugDec=False, db=None, nu
     for imgid in tqdm(range(len(test_dir)), ncols=67, desc="Predicting Curves"):
         image_file    = test_dir[imgid]
         image         = cv2.imread(image_file)
-        raw_img = image.copy()
-        raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
+        raw_img       = image.copy()
+        raw_img       = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
         height, width = image.shape[:2]
         images        = np.zeros((1, 3, input_size[0], input_size[1]), dtype=np.float32)
         masks         = np.ones((1, 1, input_size[0], input_size[1]), dtype=np.float32)

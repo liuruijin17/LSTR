@@ -20,7 +20,6 @@
 
         "max_iter": 507640,
         "stepsize": 450000,
-        "snapshot": 5000,
 
         "cache_dir": "./cache",
         "result_dir": "./results",

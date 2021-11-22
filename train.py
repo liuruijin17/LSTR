@@ -70,8 +70,6 @@ def init_parallel_jobs(dbs, queue, fn):
 def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = False, num_gpu: int = None):
     learning_rate    = system_configs.learning_rate
     max_iteration    = system_configs.max_iter
-    # pretrained_model = system_configs.pretrain
-    # snapshot         = system_configs.snapshot
     val_iter         = system_configs.val_iter
     display          = system_configs.display
     decay_rate       = system_configs.decay_rate
@@ -135,9 +133,7 @@ def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = Fa
         (set_loss, loss_dict) \
             = nnet.train(iteration, save, viz_split, **training)
         (loss_dict_reduced, loss_dict_reduced_unscaled, loss_dict_reduced_scaled, loss_value) = loss_dict
-        # metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
         metric_logger.update(loss=torch.mean(loss_value))
-        # metric_logger.update(class_error=loss_dict_reduced['class_error'])
         metric_logger.update(lr=learning_rate)
 
         del set_loss
@@ -150,10 +146,7 @@ def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = Fa
             (val_set_loss, val_loss_dict) \
                 = nnet.validate(iteration, save, viz_split, **validation)
             (loss_dict_reduced, loss_dict_reduced_unscaled, loss_dict_reduced_scaled, loss_value) = val_loss_dict
-            # logger.info('Saving training and evaluating images...')
-            # metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
             metric_logger.update(loss=torch.mean(loss_value))
-            # metric_logger.update(class_error=loss_dict_reduced['class_error'])
             metric_logger.update(lr=learning_rate)
             nnet.train_mode()
 
@@ -168,9 +161,10 @@ def train(training_dbs, validation_db, checkpoint: str = None, resume: bool = Fa
             eval_str, eval_result = testing_func(validation_db, nnet, evaluator, 64, True)
             logger.info('\n{}'.format(eval_str))
             logger.info("best metric is: {}".format(eval_result[0]['value']))
-            nnet.save_params(iteration, eval_result[0]['value'] > best_res)
             nnet.train_mode()
             synchronize()
+            nnet.save_params(iteration, eval_result[0]['value'] > best_res)
+
 
     nnet.eval_mode()
     evaluator = Evaluator(validation_db)

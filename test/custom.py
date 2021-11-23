@@ -211,10 +211,11 @@ def kp_detection(db, nnet, result_dir, debug=False, evaluator=None, repeat=1,
                                          + os.path.basename(image_file[:-4]) + '.jpg'), preds)
 
     if not debug:
-        exp_name = 'tusimple'
+        exp_name = 'custom'
         evaluator.exp_name = exp_name
-        eval_str, _ = evaluator.eval(label='{}'.format(os.path.basename(exp_name)))
-        print(eval_str)
+        eval_result = evaluator.eval(label='{}'.format(os.path.basename(exp_name)))
+        for k, v in eval_result.items():
+            print('{}: {}'.format(k, v))
 
     return 0
 

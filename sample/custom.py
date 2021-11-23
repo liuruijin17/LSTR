@@ -5,13 +5,6 @@ from config import system_configs
 from utils import crop_image, normalize_, color_jittering_, lighting_
 from imgaug.augmentables.lines import LineString, LineStringsOnImage
 
-
-GT_COLOR = (255, 0, 0)
-PRED_HIT_COLOR = (0, 255, 0)
-PRED_MISS_COLOR = (0, 0, 255)
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
-IMAGENET_STD = np.array([0.229, 0.224, 0.225])
-
 def kp_detection(db, k_ind):
     data_rng     = system_configs.data_rng
     batch_size   = system_configs.batch_size
@@ -34,24 +27,22 @@ def kp_detection(db, k_ind):
 
         # reading ground truth
         item  = db.detections(db_ind) # all in the raw coordinate
-        img   = cv2.imread(item['path'])
+        img   = cv2.imread(item['old_anno']['path'])
         mask  = np.ones((1, img.shape[0], img.shape[1], 1), dtype=np.bool)
-        label = item['label']
-        transform = True
-        if transform:
-            line_strings = db.lane_to_linestrings(item['old_anno']['lanes'])
-            line_strings = LineStringsOnImage(line_strings, shape=img.shape)
-            img, line_strings, mask = db.transform(image=img, line_strings=line_strings, segmentation_maps=mask)
-            line_strings.clip_out_of_image_()
-            new_anno = {'path': item['path'], 'lanes': db.linestrings_to_lanes(line_strings)}
-            new_anno['categories'] = item['categories']
-            label = db._transform_annotation(new_anno, img_wh=(input_size[1], input_size[0]))['label']
+        line_strings = db.lane_to_linestrings(item['old_anno']['raw_lanes'])
+        line_strings = LineStringsOnImage(line_strings, shape=img.shape)
+        img, line_strings, mask = db.transform(image=img, line_strings=line_strings, segmentation_maps=mask)
+        line_strings.clip_out_of_image_()
+        old_anno = {'path': item['old_anno']['path'],
+                    'raw_lanes': db.linestrings_to_lanes(line_strings),
+                    'categories': [1] * len(line_strings)}
+        label = db._transform_annotation(old_anno, img_wh=(input_size[1], input_size[0]))['label']
 
         # clip polys
         tgt_ids   = label[:, 0]
-        label = label[tgt_ids > 0]
+        label     = label[tgt_ids > 0]
 
-        # make lower the same
+        # make skyline the same
         label[:, 1][label[:, 1] < 0] = 1
         label[:, 1][...] = np.min(label[:, 1])
 

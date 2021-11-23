@@ -1,13 +1,13 @@
 {
     "system": {
-        "dataset": "TUSIMPLE",
-        "batch_size": 16,
-        "chunk_sizes": [16],
+        "dataset": "CUSTOM",
+        "batch_size": 8,
+        "chunk_sizes": [8],
 
         "sampling_function": "kp_detection",
 
-        "train_split": "train+val",
-        "val_split": "val",
+        "train_split": "train",
+        "val_split": "test",
         "test_split": "test",
 
         "learning_rate": 0.0001,
@@ -25,7 +25,7 @@
 
         "cache_dir": "./cache",
         "result_dir": "./results",
-        "data_dir": "../../",
+        "data_dir": "./raws",
 
         "res_layers": [1, 2, 2, 2],
         "res_dims": [16, 32, 64, 128],

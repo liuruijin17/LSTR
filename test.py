@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument("cfg_file", help="config file", type=str)
     parser.add_argument("--testiter", dest="testiter",
                         help="test at iteration i",
-                        default=None, type=int)
+                        default=500000, type=int)
     parser.add_argument("--split", dest="split",
                         help="which split to use",
                         default="validation", type=str)
@@ -73,7 +73,7 @@ def test(db, split, testiter,
 
     if modality == 'eval':
         print('static evaluating...')
-        test_file = "test.tusimple"
+        test_file = "test.custom"
         testing = importlib.import_module(test_file).testing
         testing(db, nnet, result_dir, debug=debug, evaluator=evaluator, repeat=batch,
                 debugEnc=debugEnc, debugDec=debugDec)

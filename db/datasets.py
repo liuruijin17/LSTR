@@ -1,5 +1,5 @@
-from db.tusimple import TUSIMPLE
+from db.custom import CUSTOM
 
 datasets = {
-    "TUSIMPLE": TUSIMPLE,
+    "CUSTOM": CUSTOM,
 }

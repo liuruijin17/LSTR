@@ -1,8 +1,10 @@
 import sys
+import shutil
 import json
 import os
 import numpy as np
 import pickle
+from tqdm import tqdm
 import cv2
 from tabulate import tabulate
 from torchvision.transforms import ToTensor
@@ -10,12 +12,9 @@ import imgaug.augmenters as iaa
 from imgaug.augmenters import Resize
 from imgaug.augmentables.lines import LineString, LineStringsOnImage
 
-
 from db.detection import DETECTION
 from config import system_configs
-from db.utils.lane import LaneEval
-from db.utils.metric import eval_json
-
+import db.utils.f1_metrics as f1_metric
 
 RED = (0, 0, 255)
 GREEN = (0, 255, 0)
@@ -40,28 +39,19 @@ PRED_MISS_COLOR = RED
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
 IMAGENET_STD = np.array([0.229, 0.224, 0.225])
 
-class TUSIMPLE(DETECTION):
+class CUSTOM(DETECTION):
     def __init__(self, db_config, split):
-        super(TUSIMPLE, self).__init__(db_config)
-        data_dir   = system_configs.data_dir
-        # result_dir = system_configs.result_dir
-        cache_dir   = system_configs.cache_dir
-        max_lanes   = system_configs.max_lanes
-        self.metric = 'default'
+        super(CUSTOM, self).__init__(db_config)
+        data_dir     = system_configs.data_dir
+        cache_dir    = system_configs.cache_dir
+        max_lanes    = system_configs.max_lanes
+        self.metric  = 'default'
         inp_h, inp_w = db_config['input_size']
 
-        self._split = split
-        self._dataset = {
-            "train": ['label_data_0313', 'label_data_0601'],
-            "test": ['test_label'],
-            "train+val": ['label_data_0313', 'label_data_0601', 'label_data_0531'],
-            "val": ['label_data_0531'],
-        }[self._split]
+        self.image_root = os.path.join(data_dir, '{}_images'.format(split))
+        self.anno_root  = os.path.join(data_dir, '{}_labels'.format(split))
 
-        self.root = os.path.join(data_dir, 'TuSimple', 'LaneDetection')
-        if self.root is None:
-            raise Exception('Please specify the root directory')
-        self.img_w, self.img_h = 1280, 720  # tusimple original image resolution
+        self.img_w, self.img_h = 1280, 720  # custom original image resolution
         self.max_points = 0
         self.normalize = True
         self.to_tensor = ToTensor()
@@ -72,16 +62,11 @@ class TUSIMPLE(DETECTION):
                               {'name': 'HorizontalFlip', 'parameters': {'p': 0.5}},
                               {'name': 'CropToFixedSize', 'parameters': {'height': 648, 'width': 1152}}]
 
-
         # Force max_lanes, used when evaluating testing with models trained on other datasets
         if max_lanes is not None:
             self.max_lanes = max_lanes
 
-        self.anno_files = [os.path.join(self.root, path + '.json') for path in self._dataset]
-
-        self._data = "tusimple"
-        # self._mean = np.array([0.573392775, 0.58143508, 0.573799285], dtype=np.float32) # [0.59007017 0.59914317 0.58877597]  # [0.55671538 0.56372699 0.55888226]
-        # self._std = np.array([0.01633231, 0.01760496, 0.01697805], dtype=np.float32) #
+        self._data = "custom"
         self._mean = np.array([0.40789654, 0.44719302, 0.47026115], dtype=np.float32)
         self._std = np.array([0.28863828, 0.27408164, 0.27809835], dtype=np.float32)
         self._eig_val = np.array([0.2141788, 0.01817699, 0.00341571], dtype=np.float32)
@@ -90,18 +75,8 @@ class TUSIMPLE(DETECTION):
             [-0.5832747, 0.00994535, -0.81221408],
             [-0.56089297, 0.71832671, 0.41158938]
         ], dtype=np.float32)
-        self._cat_ids = [
-            0
-        ]  # 0 car
-        self._classes = {
-            ind + 1: cat_id for ind, cat_id in enumerate(self._cat_ids)
-        }
-        self._coco_to_class_map = {
-            value: key for key, value in self._classes.items()
-        }
 
-        self._cache_file = os.path.join(cache_dir, "tusimple_{}.pkl".format(self._dataset))
-
+        self._cache_file = os.path.join(cache_dir, "{}.pkl".format(self._data, self._split))
 
         if self.augmentations is not None:
             augmentations = [getattr(iaa, aug['name'])(**aug['parameters'])
@@ -115,12 +90,10 @@ class TUSIMPLE(DETECTION):
         self._db_inds = np.arange(len(self._image_ids))
 
     def _load_data(self):
-        print("loading from cache file: {}".format(self._cache_file))
         if not os.path.exists(self._cache_file):
             print("No cache file found...")
             self._extract_data()
             self._transform_annotations()
-
             with open(self._cache_file, "wb") as f:
                 pickle.dump([self._annotations,
                              self._image_ids,
@@ -128,6 +101,7 @@ class TUSIMPLE(DETECTION):
                              self.max_lanes,
                              self.max_points], f)
         else:
+            print("Loading from cache file: {}...\nMake sure your data is not changed!".format(self._cache_file))
             with open(self._cache_file, "rb") as f:
                 (self._annotations,
                  self._image_ids,
@@ -136,74 +110,58 @@ class TUSIMPLE(DETECTION):
                  self.max_points) = pickle.load(f)
 
     def _extract_data(self):
-
         max_lanes = 0
         image_id  = 0
-
         self._old_annotations = {}
-
-        for anno_file in self.anno_files:
-            with open(anno_file, 'r') as anno_obj:
-                lines = anno_obj.readlines()
-            for line in lines:
-                data = json.loads(line) # lanes list h_sample list raw_file str
-                y_samples = data['h_samples']
-                gt_lanes = data['lanes']  # 4 lanes
-                lanes = [[(x, y) for (x, y) in zip(lane, y_samples) if x >= 0] for lane in gt_lanes]
-                lanes = [lane for lane in lanes if len(lane) > 0]
-                max_lanes = max(max_lanes, len(lanes))
-                self.max_lanes = max_lanes
-                self.max_points = max(self.max_points, max([len(l) for l in gt_lanes]))
-                img_path  = os.path.join(self.root, data['raw_file'])
-                self._image_file.append(img_path)
-                self._image_ids.append(image_id)
-                self._old_annotations[image_id] = {
-                    'path': img_path,
-                    'org_path': data['raw_file'],
-                    'org_lanes': gt_lanes,
-                    'lanes': lanes,
-                    'aug': False,
-                    'y_samples': y_samples
-                }
-                image_id += 1
-
-    def _get_img_heigth(self, path):
-        return 720
-
-    def _get_img_width(self, path):
-        return 1280
+        anno_names = os.listdir(self.anno_root)
+        for i in tqdm(range(len(anno_names)), ncols=67, desc="Reading raw data..."):
+            anno_name = anno_names[i]
+            anno_path = os.path.join(self.anno_root, anno_name)
+            with open(anno_path, 'r') as data_file:
+                anno_data = data_file.readlines()
+            lanes = [line.split() for line in anno_data]
+            lanes = [list(map(float, lane)) for lane in lanes]
+            lanes = [[(lane[i], lane[i + 1]) for i in range(0, len(lane), 2)] for lane in lanes]
+            lanes = [lane for lane in lanes if len(lane) >= 2]
+            max_lanes = max(max_lanes, len(lanes))
+            self.max_lanes = max_lanes
+            self.max_points = max(self.max_points, max([len(l) for l in lanes]))
+            image_name = anno_name[:-4] + '.jpg'
+            image_path = os.path.join(self.image_root, image_name)
+            self._image_file.append(image_path)
+            self._image_ids.append(image_id)
+            self._old_annotations[image_id] = {
+                'path': image_path,
+                'raw_lanes': lanes,
+                'categories': [1] * len(lanes)
+            }
+            image_id += 1
 
     def _transform_annotation(self, anno, img_wh=None):
         if img_wh is None:
-            img_h = self._get_img_heigth(anno['path'])
-            img_w = self._get_img_width(anno['path'])
+            img_h, img_w = self.img_h, self.img_w
         else:
             img_w, img_h = img_wh
-
-        old_lanes = anno['lanes']
-        categories = anno['categories'] if 'categories' in anno else [1] * len(old_lanes)
-        old_lanes = zip(old_lanes, categories)
-        old_lanes = filter(lambda x: len(x[0]) > 0, old_lanes)
-        lanes = np.ones((self.max_lanes, 1 + 2 + 2 * self.max_points), dtype=np.float32) * -1e5
+        old_lanes   = anno['raw_lanes']
+        categories  = anno['categories'] if 'categories' in anno else [1] * len(old_lanes)
+        old_lanes   = zip(old_lanes, categories)
+        old_lanes   = filter(lambda x: len(x[0]) > 0, old_lanes)
+        lanes       = np.ones((self.max_lanes, 1 + 2 + 2 * self.max_points), dtype=np.float32) * -1e5
         lanes[:, 0] = 0
-        old_lanes = sorted(old_lanes, key=lambda x: x[0][0][0])
+        old_lanes   = sorted(old_lanes, key=lambda x: x[0][0][0])
         for lane_pos, (lane, category) in enumerate(old_lanes):
-            lower, upper = lane[0][1], lane[-1][1]
-            xs = np.array([p[0] for p in lane]) / img_w
-            ys = np.array([p[1] for p in lane]) / img_h
+            lower, upper       = lane[0][1], lane[-1][1]
+            xs                 = np.array([p[0] for p in lane]) / img_w
+            ys                 = np.array([p[1] for p in lane]) / img_h
             lanes[lane_pos, 0] = category
             lanes[lane_pos, 1] = lower / img_h
             lanes[lane_pos, 2] = upper / img_h
             lanes[lane_pos, 3:3 + len(xs)] = xs
             lanes[lane_pos, (3 + self.max_points):(3 + self.max_points + len(ys))] = ys
-
         new_anno = {
-            'path': anno['path'],
             'label': lanes,
             'old_anno': anno,
-            'categories': [cat for _, cat in old_lanes]
         }
-
         return new_anno
 
     def _transform_annotations(self):
@@ -219,21 +177,6 @@ class TUSIMPLE(DETECTION):
 
     def __len__(self):
         return len(self._annotations)
-
-    def _to_float(self, x):
-        return float("{:.2f}".format(x))
-
-    def class_name(self, cid):
-        cat_id = self._classes[cid]
-        return cat_id
-
-    def get_metrics(self, lanes, idx):
-        label = self._annotations[idx]
-        org_anno = label['old_anno']
-        pred = self.pred2lanes(org_anno['path'], lanes, org_anno['y_samples'])
-        _, _, _, matches, accs, dist = LaneEval.bench(pred, org_anno['org_lanes'], org_anno['y_samples'], 0, True)
-
-        return matches, accs, dist
 
     def pred2lanes(self, path, pred, y_samples):
         ys = np.array(y_samples) / self.img_h
@@ -251,7 +194,7 @@ class TUSIMPLE(DETECTION):
 
         return lanes
 
-    def __getitem__(self, idx, transform=False):
+    def __getitem__(self, idx, transform=False):  # Useless
 
         item = self._annotations[idx]
         img = cv2.imread(item['path'])
@@ -394,41 +337,41 @@ class TUSIMPLE(DETECTION):
 
         return img
 
-    def pred2tusimpleformat(self, idx, pred, runtime):
-        runtime *= 1000.  # s to ms
-        img_name = self._annotations[idx]['old_anno']['org_path']
-        h_samples = self._annotations[idx]['old_anno']['y_samples']
-        lanes = self.pred2lanes(img_name, pred, h_samples)
-        output = {'raw_file': img_name, 'lanes': lanes, 'run_time': runtime}
-        return json.dumps(output)
-
-    def save_tusimple_predictions(self, predictions, runtimes, filename):
-        lines = []
-        for idx in range(len(predictions)):
-            line = self.pred2tusimpleformat(idx, predictions[idx], runtimes[idx])
-            lines.append(line)
-        with open(filename, 'w') as output_file:
-            output_file.write('\n'.join(lines))
-
     def eval(self, exp_dir, predictions, runtimes, label=None, only_metrics=False):
-        pred_filename = 'tusimple_{}_predictions_{}.json'.format(self.split, label)
-        pred_filename = os.path.join(exp_dir, pred_filename)
-        self.save_tusimple_predictions(predictions, runtimes, pred_filename)
-        if self.metric == 'default':
-            result = json.loads(LaneEval.bench_one_submit(pred_filename, self.anno_files))
-        elif self.metric == 'ours':
-            result = json.loads(eval_json(pred_filename, self.anno_files[0], json_type='tusimple'))
-        table = {}
-        for metric in result:
-            table[metric['name']] = [metric['value']]
-        table = tabulate(table, headers='keys')
+        eval_dir = os.path.join(exp_dir, 'eval_results')
+        os.makedirs(os.path.dirname(eval_dir), exist_ok=True)
+        for idx, pred in enumerate(tqdm(predictions, ncols=67, desc="Generating points...")):
+            output = self.get_prediction_string(pred)
+            img_name = os.path.basename(self._annotations[idx]['old_anno']['path'])
+            output_filename = img_name[:-4] + '.txt'
+            output_filepath = os.path.join(eval_dir, output_filename)
+            os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
+            with open(output_filepath, 'w') as out_file:
+                out_file.write(output)
+        return f1_metric.eval_predictions(self.anno_root, eval_dir, width=30, official=True, sequential=False)
 
-        if not only_metrics:
-            filename = 'tusimple_{}_eval_result_{}.json'.format(self.split, label)
-            with open(os.path.join(exp_dir, filename), 'w') as out_file:
-                json.dump(result, out_file)
-
-        return table, result
+    def get_prediction_string(self, pred):
+        out = []
+        for lane in pred:
+            if lane[0] == 0:
+                continue
+            lane = lane[1:]
+            lower, upper = lane[0], lane[1]
+            lanepoly = lane[2:]
+            ys = np.linspace(lower, upper, num=10)
+            lane_ys = (ys * self.img_h).astype(int).tolist()
+            # Calculate the predicted xs
+            lane_xs = (lanepoly[0] / (ys - lanepoly[1]) ** 2 +
+                       lanepoly[2] / (ys - lanepoly[1]) +
+                       lanepoly[3] +
+                       lanepoly[4] * ys -
+                       lanepoly[5]) * self.img_w
+            lane_xs = lane_xs[(lane_xs > 0) & (lane_xs < self.img_w)].tolist()
+            lane_xs, lane_ys = lane_xs[::-1], lane_ys[::-1]
+            lane_str = ' '.join(['{:.5f} {:.5f}'.format(x, y) for x, y in zip(lane_xs, lane_ys)])
+            if lane_str != '':
+                out.append(lane_str)
+        return '\n'.join(out)
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):

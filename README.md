@@ -17,9 +17,8 @@ For details see [End-to-end Lane Shape Prediction with Transformers](https://arx
 
 ## Updates!!
 * 【2021/11/23】 We now support [Train and Test Custom Data](https://github.com/liuruijin17/LSTR/tree/custom).
-<details><summary>Tutorials</summary>
-*  [Train and Test Custom Data](docs/train_test_custom_data.md).
-</details>
+
+Tutorial: [Train and Test Your Custom Data](docs/train_test_custom_data.md).
 
 * 【2021/11/16】 We fix the [Multi-GPU Training](https://github.com/liuruijin17/LSTR/tree/multiGPU).
 * 【2020/12/06】 We now support [CULane Dataset](https://github.com/liuruijin17/LSTR/tree/culane).

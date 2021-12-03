@@ -16,6 +16,7 @@ TuSimple accuracy.
 For details see [End-to-end Lane Shape Prediction with Transformers](https://arxiv.org/pdf/2011.04233.pdf) by Ruijin Liu, Zejian Yuan, Tie Liu, Zhiliang Xiong.
 
 ## Updates!!
+* 【2021/12/03】 Our new work Learning to Predict 3D Lane Shape and Camera Pose  from a Single Image via Geometry Constraints by Ruijin Liu, Dapeng Chen, Tie Liu, Zhiliang Xiong, Zejian Yuan is accepted by AAAI2022! The preprint paper and codes will be released soon!
 * 【2021/11/23】 We now support [Train and Test Custom Data](https://github.com/liuruijin17/LSTR/tree/custom).
 Tutorial: [Train and Test Your Custom Data](https://github.com/liuruijin17/LSTR/blob/custom/docs/train_test_custom_data.md).
 
